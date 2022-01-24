@@ -11,6 +11,9 @@ TODO
 """
 import csv
 import math
+from re import T
+import pandas as pd
+import numpy as np
 
 
 def main():
@@ -22,17 +25,14 @@ def main():
     
     # pull csv data
     with open(training_file) as csv_file:
-        data = list(csv.reader(csv_file))
+        data = pd.read_csv(csv_file)
 
     # find column associated w/ target variable
-    target_col = 0
-    for i in range(len(data[0])):
-        if data[0][i] == target_attr:
-            target_col = i
+    target_col = data.columns.get_loc(target_attr)
     data = clean_titanic_data(data)
 
     # build decision tree string
-    tree = build_tree(data, target_col)
+    tree = build_tree(data, target_attr)
 
     # write classifier file
     emit_prologue(out_file, validation_file)
@@ -49,12 +49,7 @@ def clean_titanic_data(data):
 
     :returns: cleaned data
     """
-    new_data = []
-    new_data.append(data[0]) # get column headers
-    
-    # TODO
-
-    return new_data
+    return data[["PassengerId", "Survived", "Sex"]].replace("male", 1).replace("female", 0)
 
 
 def emit_prologue(out_file, validation_file):
@@ -73,12 +68,12 @@ def emit_prologue(out_file, validation_file):
         "\"\"\"\n" \
         "author: Scott F\n" \
         "\"\"\"\n" \
-        "import csv\n" \
+        "import pandas as pd\n" \
         "\n" \
         "def main():\n" \
         "    # open validation data\n" \
         "    with open(\"{}\") as fd:\n".format(validation_file) + \
-        "        data = list(csv.reader(fd))\n"
+        "        data = pd.DataFrame(fd)\n"
         "\n" \
     )
 
@@ -100,7 +95,7 @@ def emit_body(out_file, tree_str):
     fd.write(
         "    # iterates through each row and classifies the target\n" \
         "    # classifications are printed to standard out\n" \
-        "    for i in range(1, len(data)):\n" + \
+        "    for idx, row in data.iterrows():\n" + \
         tree_str + \
         "\n"
     )
@@ -144,7 +139,7 @@ def find_split_attr(data, target_col):
     min_bhatt = float('inf')
 
     # try the splitting with each column
-    for col in range(len(data[0])):
+    for col in data.columns:
         # Node 1: col == 0
         # Class 1: target_col == 0
         # Class 2: target_col == 1
@@ -158,17 +153,17 @@ def find_split_attr(data, target_col):
         n2_c2 = 0
         
         # filter each data point into the correct node and class
-        for i in range(1, len(data)):
+        for _, row in data.iterrows():
 
-            if data[i][col] == 0:
-                if data[i][target_col] == 0:
+            if row[col] == 0:
+                if row[target_col] == 0:
                     n1_c1 += 1
-                elif data[i][target_col] == 1:
+                elif row[target_col] == 1:
                     n1_c2 += 1
-            elif data[i][col] == 1:
-                if data[i][target_col] == 0:
+            elif row[col] == 1:
+                if row[target_col] == 0:
                     n2_c1 += 1
-                elif data[i][target_col]:
+                elif row[target_col]:
                     n2_c2 += 1
 
         # calculate bhatt. coeff as metric for splitting
@@ -190,7 +185,6 @@ def find_split_attr(data, target_col):
             n2_p2 = 0
         
         bhatt = math.sqrt(n1_p1*n2_p1) + math.sqrt(n1_p2*n2_p2)
-        
 
         # ignore non-binary attributes
         if bhatt == 0:
@@ -216,15 +210,15 @@ def build_tree(data, target, depth=0, l_r=0):
     :returns: a string containing the if-else structure of the decision tree
     """
     # base case
-    if depth == 3 or node_purity(data, target) >= .95: # 2 starting from 0
+    if depth == 1 or node_purity(data, target) >= .95: # 2 starting from 0
         return ("    " * (depth+2)) + "print({})\n".format(l_r)
 
     else:
         attr = find_split_attr(data, target)
         l_data, r_data = split_data(data, attr)
 
-        return  ("    " * (depth+2)) + "# attribute {} is {}\n".format(attr, data[0][attr]) +\
-                ("    " * (depth+2)) + "if int(data[i][{}]) == 1:\n".format(attr) + \
+        return  ("    " * (depth+2)) + "# attribute\n".format(attr) +\
+                ("    " * (depth+2)) + "if int(row[\'{}\']) == 1:\n".format(attr) + \
                 build_tree(l_data, target, depth+1, 1) + \
                 ("    " * (depth+2)) + "else:\n" + \
                 build_tree(r_data, target, depth+1, 0)
@@ -237,14 +231,8 @@ def node_purity(data, target):
     :param data: 2d array of data values
     :param target: attribute we are considering for purity  
     """
-    zeros = 0
-    ones  = 0
-
-    for row in data:
-        if row[target] == 0:
-            zeros += 1
-        else:
-            ones += 1
+    zeros = data[target].value_counts()[0]
+    ones  = data[target].value_counts()[1]
 
     return max([zeros/(zeros+ones), ones/(zeros+ones)])
 
@@ -253,26 +241,23 @@ def split_data(data, attr):
     """
     spits a dataset at a given attribute into two new sets
     
-    :param data: 2d array of data values
+    :param data: pandas dataframe
     :param attr: attribute to split on
     :returns: l_data and r_data where l_data is all rows were attr == 0
               and r_data is all rows where attr == 1
     """
     l_data = [] # data left of the threshold (attr == 0)
     r_data = [] # data right of the threshold (attr == 1)
-
+    print(attr)
     # copy each row
-    for row in range(1, len(data)):
-        if data[row][attr] == 0:
-            l_data.append(data[row])
+    for _, row in data.iterrows():
+        if row[attr] == 0:
+            l_data.append(row)
         else:
-            r_data.append(data[row])
+            r_data.append(row)
 
-    # each set gets the row of columm headers
-    l_data.insert(0, data[0])
-    r_data.insert(0, data[0])
-
-    return l_data, r_data
+    return pd.DataFrame(l_data, columns=data.columns), \
+           pd.DataFrame(r_data, columns=data.columns)
 
 
 if __name__ == "__main__":

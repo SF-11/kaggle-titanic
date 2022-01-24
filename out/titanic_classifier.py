@@ -1,18 +1,23 @@
 """
 author: Scott F
 """
-import csv
+import pandas as pd
 
 def main():
     # open validation data
-    with open("data/test.csv") as fd:
-        data = list(csv.reader(fd))
+    with open("data/test.csv", 'r') as fd:
+        data = pd.read_csv(fd)
 
     # iterates through each row and classifies the target
     # classifications are printed to standard out
-    for i in range(1, len(data)):
-        print(0)
-
+    for idx, row in data.iterrows():
+        # attribute
+        
+        if row['Sex'] == 'male':
+            print(f"{row['PassengerId']},{0}")
+        else:
+            print(f"{row['PassengerId']},{1}")
+            
 
 if __name__ == "__main__":
     main()
